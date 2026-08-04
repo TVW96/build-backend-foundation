@@ -26,7 +26,7 @@ import { ListingsModule } from './listings/listings.module';
 
         // Acceptable temporarily during early local development.
         // Replace with migrations before production.
-        synchronize: true,
+        synchronize: configService.get('NODE_ENV') !== 'production',
       }),
     }),
 
