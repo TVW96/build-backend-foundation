@@ -36,11 +36,13 @@ export class ListingsService {
         const listingItemRepository = manager.getRepository(ListingItem);
         const inventoryRepository = manager.getRepository(InventoryItem);
 
-        const inventoryItems = await inventoryRepository.find({
-          where: {
-            itemId: In(createListingDto.itemIds),
-          },
-        });
+        const inventoryItems = await inventoryRepository
+          .createQueryBuilder('inventoryItem')
+          .setLock('pessimistic_write')
+          .where('inventoryItem.itemId IN (:...itemIds)', {
+            itemIds: createListingDto.itemIds,
+          })
+          .getMany();
 
         this.validateRequestedItems(
           inventoryItems,
