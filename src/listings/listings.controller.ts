@@ -1,15 +1,30 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { ListingsService } from './listings.service';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+} from '@nestjs/common';
+
 import { CreateListingDto } from './dto/create-listing.dto';
-import { UpdateListingDto } from './dto/update-listing.dto';
+import { ListingsService } from './listings.service';
 
 @Controller('listings')
 export class ListingsController {
-  constructor(private readonly listingsService: ListingsService) {}
+  constructor(
+    private readonly listingsService: ListingsService,
+  ) {}
 
   @Post()
   create(@Body() createListingDto: CreateListingDto) {
-    return this.listingsService.create(createListingDto);
+    // Temporary value until authentication is implemented.
+    const sellerId = '00000000-0000-4000-8000-000000000001';
+
+    return this.listingsService.create(
+      sellerId,
+      createListingDto,
+    );
   }
 
   @Get()
@@ -17,18 +32,23 @@ export class ListingsController {
     return this.listingsService.findAll();
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.listingsService.findOne(+id);
+  @Get(':listingId')
+  findOne(@Param('listingId') listingId: string) {
+    return this.listingsService.findOne(listingId);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateListingDto: UpdateListingDto) {
-    return this.listingsService.update(+id, updateListingDto);
-  }
+  @Delete(':listingId/items/:itemId')
+  removeItem(
+    @Param('listingId') listingId: string,
+    @Param('itemId') itemId: string,
+  ) {
+    // Temporary value until authentication is implemented.
+    const sellerId = '00000000-0000-4000-8000-000000000001';
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.listingsService.remove(+id);
+    return this.listingsService.removeItem(
+      listingId,
+      itemId,
+      sellerId,
+    );
   }
 }
