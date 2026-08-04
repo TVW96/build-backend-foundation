@@ -1,16 +1,9 @@
-import {
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DataSource } from 'typeorm';
 
-import {
-  InventoryAvailability,
-  InventoryItem,
-} from '../inventory-items/entities/inventory-item.entity';
+import { InventoryStatus, ListingStatus } from '../../generated/prisma/client';
+import { PrismaService } from '../database/prisma.service';
 import { CreateListingDto } from './dto/create-listing.dto';
-import { ListingStatus } from './entities/listing.entity';
 import { ListingsService } from './listings.service';
 
 describe('ListingsService', () => {
@@ -18,7 +11,7 @@ describe('ListingsService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ListingsService, { provide: DataSource, useValue: {} }],
+      providers: [ListingsService, { provide: PrismaService, useValue: {} }],
     }).compile();
 
     service = module.get<ListingsService>(ListingsService);
@@ -32,111 +25,75 @@ describe('ListingsService', () => {
     const sellerId = 'seller-1';
 
     const buildItem = (
-      overrides: Partial<InventoryItem> = {},
-    ): InventoryItem =>
-      ({
-        itemId: 'item-1',
-        ownerId: sellerId,
-        availability: InventoryAvailability.AVAILABLE,
-        ...overrides,
-      }) as InventoryItem;
+      overrides: Partial<{
+        itemId: string;
+        ownerId: string;
+        availability: InventoryStatus;
+      }> = {},
+    ) => ({
+      itemId: 'item-1',
+      ownerId: sellerId,
+      availability: InventoryStatus.AVAILABLE,
+      ...overrides,
+    });
+
+    const invoke = (
+      items: ReturnType<typeof buildItem>[],
+      requestedItemIds: string[],
+    ) =>
+      (
+        service as unknown as {
+          validateRequestedItems: (
+            inventoryItems: ReturnType<typeof buildItem>[],
+            requestedItemIds: string[],
+            sellerId: string,
+          ) => void;
+        }
+      ).validateRequestedItems(items, requestedItemIds, sellerId);
 
     it('does not throw when all requested items exist, are owned, and available', () => {
       const items = [buildItem(), buildItem({ itemId: 'item-2' })];
-      const requestedItemIds = ['item-1', 'item-2'];
 
-      expect(() =>
-        (
-          service as unknown as {
-            validateRequestedItems: (
-              inventoryItems: InventoryItem[],
-              requestedItemIds: string[],
-              sellerId: string,
-            ) => void;
-          }
-        ).validateRequestedItems(items, requestedItemIds, sellerId),
-      ).not.toThrow();
+      expect(() => invoke(items, ['item-1', 'item-2'])).not.toThrow();
     });
 
     it('throws when one or more requested items do not exist', () => {
       const items = [buildItem()];
-      const requestedItemIds = ['item-1', 'item-2'];
 
-      expect(() =>
-        (
-          service as unknown as {
-            validateRequestedItems: (
-              inventoryItems: InventoryItem[],
-              requestedItemIds: string[],
-              sellerId: string,
-            ) => void;
-          }
-        ).validateRequestedItems(items, requestedItemIds, sellerId),
-      ).toThrow(BadRequestException);
+      expect(() => invoke(items, ['item-1', 'item-2'])).toThrow(
+        BadRequestException,
+      );
     });
 
     it('throws when an item is not owned by the seller', () => {
       const items = [buildItem({ ownerId: 'another-seller' })];
-      const requestedItemIds = ['item-1'];
 
-      expect(() =>
-        (
-          service as unknown as {
-            validateRequestedItems: (
-              inventoryItems: InventoryItem[],
-              requestedItemIds: string[],
-              sellerId: string,
-            ) => void;
-          }
-        ).validateRequestedItems(items, requestedItemIds, sellerId),
-      ).toThrow(BadRequestException);
+      expect(() => invoke(items, ['item-1'])).toThrow(BadRequestException);
     });
 
     it('throws when an item is unavailable', () => {
-      const items = [
-        buildItem({ availability: InventoryAvailability.LISTED }),
-      ];
-      const requestedItemIds = ['item-1'];
+      const items = [buildItem({ availability: InventoryStatus.RESERVED })];
 
-      expect(() =>
-        (
-          service as unknown as {
-            validateRequestedItems: (
-              inventoryItems: InventoryItem[],
-              requestedItemIds: string[],
-              sellerId: string,
-            ) => void;
-          }
-        ).validateRequestedItems(items, requestedItemIds, sellerId),
-      ).toThrow(BadRequestException);
+      expect(() => invoke(items, ['item-1'])).toThrow(BadRequestException);
     });
   });
 
   describe('findOneWithRelations', () => {
     it('throws NotFoundException when listing is missing', async () => {
-      const findOne = jest.fn().mockResolvedValue(null);
-
-      const repository = {
-        findOne,
-      };
+      const findUnique = jest.fn().mockResolvedValue(null);
 
       const mockedService = service as unknown as {
-        dataSource: { getRepository: () => { findOne: () => Promise<null> } };
-        findOneWithRelations: (
-          listingId: string,
-          manager?: unknown,
-        ) => Promise<unknown>;
+        prisma: { listing: { findUnique: typeof findUnique } };
+        findOneWithRelations: (listingId: string) => Promise<unknown>;
       };
 
-      mockedService.dataSource = {
-        getRepository: () => repository,
-      };
+      mockedService.prisma = { listing: { findUnique } };
 
       await expect(
         mockedService.findOneWithRelations('missing-listing'),
       ).rejects.toThrow(NotFoundException);
 
-      expect(findOne).toHaveBeenCalled();
+      expect(findUnique).toHaveBeenCalled();
     });
   });
 
@@ -149,81 +106,70 @@ describe('ListingsService', () => {
       };
 
       const inventoryItems = [
-        ({
+        {
           itemId: 'item-1',
           ownerId: 'seller-1',
-          availability: InventoryAvailability.AVAILABLE,
-        }) as InventoryItem,
+          availability: InventoryStatus.AVAILABLE,
+        },
       ];
 
-      const listingCreate = jest.fn((payload) => payload);
-      const listingSave = jest
+      const listingCreate = jest
         .fn()
         .mockResolvedValue({ listingId: 'listing-1' });
-      const listingItemCreate = jest.fn((payload) => payload);
-      const listingItemSave = jest.fn().mockResolvedValue([]);
-      const inventoryQueryBuilder = {
-        setLock: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue(inventoryItems),
-      };
-      const inventorySave = jest.fn().mockResolvedValue(inventoryItems);
+      const listingFindUnique = jest
+        .fn()
+        .mockResolvedValue({ listingId: 'listing-1' });
+      const listingItemCreateMany = jest
+        .fn()
+        .mockResolvedValue({ count: inventoryItems.length });
+      const inventoryItemFindMany = jest
+        .fn()
+        .mockResolvedValue(inventoryItems);
+      const inventoryItemUpdateMany = jest
+        .fn()
+        .mockResolvedValue({ count: inventoryItems.length });
 
-      const repositories = {
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue(undefined),
         listing: {
           create: listingCreate,
-          save: listingSave,
-          findOne: jest.fn().mockResolvedValue({ listingId: 'listing-1' }),
+          findUnique: listingFindUnique,
         },
         listingItem: {
-          create: listingItemCreate,
-          save: listingItemSave,
+          createMany: listingItemCreateMany,
         },
-        inventory: {
-          createQueryBuilder: jest
-            .fn()
-            .mockReturnValue(inventoryQueryBuilder),
-          save: inventorySave,
-        },
-      };
-
-      const manager = {
-        getRepository: (entity: unknown) => {
-          if ((entity as { name?: string }).name === 'Listing') {
-            return repositories.listing;
-          }
-
-          if ((entity as { name?: string }).name === 'ListingItem') {
-            return repositories.listingItem;
-          }
-
-          return repositories.inventory;
+        inventoryItem: {
+          findMany: inventoryItemFindMany,
+          updateMany: inventoryItemUpdateMany,
         },
       };
 
       const mockedService = service as unknown as {
-        dataSource: {
-          transaction: (
-            callback: (manager: unknown) => Promise<unknown>,
+        prisma: {
+          $transaction: (
+            callback: (tx: unknown) => Promise<unknown>,
           ) => Promise<unknown>;
         };
       };
 
-      mockedService.dataSource = {
-        transaction: (callback) => callback(manager),
+      mockedService.prisma = {
+        $transaction: (callback) => callback(tx),
       };
 
       await service.create('seller-1', createListingDto);
 
       expect(listingCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          sellerId: 'seller-1',
-          title: 'Example Listing',
-          description: null,
-          price: '42.00',
-          status: ListingStatus.ACTIVE,
+          data: expect.objectContaining({
+            sellerId: 'seller-1',
+            title: 'Example Listing',
+            description: null,
+            price: '42.00',
+            status: ListingStatus.ACTIVE,
+          }),
         }),
       );
     });
   });
 });
+

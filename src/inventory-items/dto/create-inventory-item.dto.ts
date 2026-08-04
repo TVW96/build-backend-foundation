@@ -8,7 +8,7 @@ import {
   Min,
 } from 'class-validator';
 
-import { InventoryAvailability } from '../entities/inventory-item.entity';
+import { InventoryStatus } from '../../../generated/prisma/client';
 
 export class CreateInventoryItemDto {
   @IsUUID()
@@ -26,15 +26,11 @@ export class CreateInventoryItemDto {
   conditionNotes?: string | null;
 
   @IsOptional()
-  @IsEnum(InventoryAvailability)
-  availability?: InventoryAvailability;
+  @IsEnum(InventoryStatus)
+  availability?: InventoryStatus;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   acquisitionPrice?: number | null;
-
-  @IsOptional()
-  @IsString()
-  sellerPhotoPath?: string | null;
 }

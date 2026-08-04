@@ -8,11 +8,8 @@ describe('AppModule (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    process.env.DB_HOST ??= 'localhost';
-    process.env.DB_PORT ??= '5432';
-    process.env.DB_USERNAME ??= 'test';
-    process.env.DB_PASSWORD ??= 'test';
-    process.env.DB_NAME ??= 'test';
+    process.env.DATABASE_URL ??=
+      'postgresql://test:test@localhost:5432/test?schema=public';
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],

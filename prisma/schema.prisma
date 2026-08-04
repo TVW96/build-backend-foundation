@@ -1,0 +1,238 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRoleType {
+  USER
+  DEVELOPER
+  ADMIN
+}
+
+enum InventoryStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  REMOVED
+}
+
+enum ListingType {
+  SINGLE
+  BUNDLE
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  RESERVED
+  SOLD
+  CANCELLED
+  ARCHIVED
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+/// Local credential store. Replaced by Supabase Auth in the cloud deployment;
+/// `Profile` and domain relationships are designed to survive that swap.
+model AuthUser {
+  authUserId   String   @id @default(uuid()) @map("auth_user_id")
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  profile Profile?
+  roles   UserRole[]
+
+  @@map("auth_users")
+}
+
+model Profile {
+  profileId   String   @id @default(uuid()) @map("profile_id")
+  authUserId  String   @unique @map("auth_user_id")
+  username    String   @unique
+  displayName String?  @map("display_name")
+  bio         String?
+  avatarPath  String?  @map("avatar_path")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  authUser       AuthUser        @relation(fields: [authUserId], references: [authUserId], onDelete: Cascade)
+  inventoryItems InventoryItem[]
+  listings       Listing[]
+  mediaAssets    MediaAsset[]
+
+  @@map("profiles")
+}
+
+/// A role-assignment record rather than a single enum column, so that grants
+/// can be audited (see `assignedByAuthUserId`) and a user could hold more than
+/// one role. Self-assignment of DEVELOPER/ADMIN must be rejected in the
+/// application layer -- it cannot be expressed as a table constraint.
+model UserRole {
+  userRoleId           String       @id @default(uuid()) @map("user_role_id")
+  authUserId           String       @map("auth_user_id")
+  role                 UserRoleType @default(USER)
+  assignedByAuthUserId String?      @map("assigned_by_auth_user_id")
+  createdAt            DateTime     @default(now()) @map("created_at")
+
+  authUser AuthUser @relation(fields: [authUserId], references: [authUserId], onDelete: Cascade)
+
+  @@unique([authUserId, role])
+  @@map("user_roles")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog / inventory / listings
+// ---------------------------------------------------------------------------
+
+/// General information about a manga release, independent of any physical
+/// copy owned by a seller.
+model CatalogProduct {
+  productId       String    @id @default(uuid()) @map("product_id")
+  title           String
+  series          String?
+  volumeNumber    Int?      @map("volume_number")
+  edition         String?
+  isbn            String?   @unique
+  author          String?
+  publisher       String?
+  language        String?
+  publicationDate DateTime? @map("publication_date") @db.Date
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  inventoryItems InventoryItem[]
+  mediaAssets    MediaAsset[]
+
+  // Supports: search catalog products by title, series, ISBN, publisher, volume.
+  @@index([title])
+  @@index([series])
+  @@index([publisher])
+  @@index([volumeNumber])
+  @@map("catalog_products")
+}
+
+/// One physical manga item owned by a seller. Many inventory items may point
+/// at the same catalog product.
+model InventoryItem {
+  itemId           String          @id @default(uuid()) @map("item_id")
+  productId        String          @map("product_id")
+  ownerId          String          @map("owner_id")
+  condition        String
+  conditionNotes   String?         @map("condition_notes")
+  availability     InventoryStatus @default(AVAILABLE)
+  acquisitionPrice Decimal?        @map("acquisition_price") @db.Decimal(10, 2)
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  // Retain ownership/provenance history: never cascade-delete an inventory
+  // item just because its catalog product or owner row changes.
+  product      CatalogProduct @relation(fields: [productId], references: [productId], onDelete: Restrict)
+  owner        Profile        @relation(fields: [ownerId], references: [profileId], onDelete: Restrict)
+  listingItems ListingItem[]
+  mediaAssets  MediaAsset[]
+
+  // Supports: retrieve inventory items belonging to one seller; filter by condition.
+  @@index([ownerId])
+  @@index([productId])
+  @@index([condition])
+  @@map("inventory_items")
+}
+
+/// A marketplace offer for one inventory item (SINGLE) or several sold
+/// together (BUNDLE). The actual items are linked through `ListingItem`.
+model Listing {
+  listingId   String        @id @default(uuid()) @map("listing_id")
+  sellerId    String        @map("seller_id")
+  title       String
+  description String?
+  price       Decimal       @db.Decimal(10, 2)
+  listingType ListingType   @default(SINGLE) @map("listing_type")
+  status      ListingStatus @default(DRAFT)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  // Retain seller sales history: do not cascade-delete listings from a profile.
+  seller       Profile       @relation(fields: [sellerId], references: [profileId], onDelete: Restrict)
+  listingItems ListingItem[]
+  mediaAssets  MediaAsset[]
+
+  // Supports: active listings ordered by creation date; listings by seller;
+  // filter by price/status/type.
+  @@index([status, createdAt])
+  @@index([sellerId])
+  @@index([price])
+  @@index([listingType])
+  @@map("listings")
+}
+
+/// Junction table between `Listing` and `InventoryItem`. A listing with one
+/// row is a single-item sale; more than one row makes it a bundle.
+model ListingItem {
+  listingItemId String @id @default(uuid()) @map("listing_item_id")
+  listingId     String @map("listing_id")
+  itemId        String @map("item_id")
+
+  // The junction row is meaningless without its listing, so it cascades.
+  // The inventory item itself is never cascade-deleted through this edge.
+  listing       Listing       @relation(fields: [listingId], references: [listingId], onDelete: Cascade)
+  inventoryItem InventoryItem @relation(fields: [itemId], references: [itemId], onDelete: Restrict)
+
+  // Supports: retrieve all items in a listing; find every active listing
+  // containing a given inventory item. No duplicate item within one listing.
+  @@unique([listingId, itemId])
+  @@index([itemId])
+  @@map("listing_items")
+}
+
+// ---------------------------------------------------------------------------
+// Media
+// ---------------------------------------------------------------------------
+
+/// Metadata only -- binary image data lives in object storage (e.g. an S3 /
+/// Supabase Storage bucket), never in PostgreSQL.
+model MediaAsset {
+  mediaAssetId     String   @id @default(uuid()) @map("media_asset_id")
+  ownerId          String   @map("owner_id")
+  bucket           String
+  objectPath       String   @map("object_path")
+  originalFileName String   @map("original_file_name")
+  mimeType         String   @map("mime_type")
+  fileSize         Int      @map("file_size")
+  altText          String?  @map("alt_text")
+  productId        String?  @map("product_id")
+  itemId           String?  @map("item_id")
+  listingId        String?  @map("listing_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  owner Profile @relation(fields: [ownerId], references: [profileId], onDelete: Restrict)
+
+  // Media metadata can outlive the specific product/item/listing it was
+  // attached to, so these edges clear the pointer instead of deleting the row.
+  product CatalogProduct? @relation(fields: [productId], references: [productId], onDelete: SetNull)
+  item    InventoryItem?  @relation(fields: [itemId], references: [itemId], onDelete: SetNull)
+  listing Listing?        @relation(fields: [listingId], references: [listingId], onDelete: SetNull)
+
+  // Supports: retrieve media belonging to a profile, product, item, or listing.
+  @@index([ownerId])
+  @@index([productId])
+  @@index([itemId])
+  @@index([listingId])
+  @@map("media_assets")
+}

@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Prisma generated client
+/generated/
+
 # Compiled output
 dist/
 node_modules/
@@ -44,3 +47,5 @@ lerna-debug.log*
 tmp/
 temp/
 *.tmp
+
+/generated/prisma

@@ -3,101 +3,89 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import {
-  DataSource,
-  EntityManager,
-  In,
-  Repository,
-} from 'typeorm';
 
+import { PrismaService } from '../database/prisma.service';
 import {
-  InventoryAvailability,
-  InventoryItem,
-} from '../inventory-items/entities/inventory-item.entity';
+  InventoryStatus,
+  ListingStatus,
+  ListingType,
+  Prisma,
+} from '../../generated/prisma/client';
 import { CreateListingDto } from './dto/create-listing.dto';
-import { Listing, ListingStatus } from './entities/listing.entity';
-import { ListingItem } from './entities/listing-item.entity';
+
+const listingWithItemsInclude = {
+  listingItems: { include: { inventoryItem: true } },
+} satisfies Prisma.ListingInclude;
+
+type ListingWithItems = Prisma.ListingGetPayload<{
+  include: typeof listingWithItemsInclude;
+}>;
 
 @Injectable()
 export class ListingsService {
-  constructor(
-    @InjectDataSource()
-    private readonly dataSource: DataSource,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(
     sellerId: string,
     createListingDto: CreateListingDto,
-  ): Promise<Listing> {
-    return this.dataSource.transaction(
-      async (manager: EntityManager): Promise<Listing> => {
-        const listingRepository = manager.getRepository(Listing);
-        const listingItemRepository = manager.getRepository(ListingItem);
-        const inventoryRepository = manager.getRepository(InventoryItem);
+  ): Promise<ListingWithItems> {
+    return this.prisma.$transaction(async (tx) => {
+      // Lock the requested rows so a concurrent request cannot claim them
+      // between the read and the update below.
+      await tx.$queryRaw`
+        SELECT item_id FROM inventory_items
+        WHERE item_id = ANY(${createListingDto.itemIds}::uuid[])
+        FOR UPDATE
+      `;
 
-        const inventoryItems = await inventoryRepository
-          .createQueryBuilder('inventoryItem')
-          .setLock('pessimistic_write')
-          .where('inventoryItem.itemId IN (:...itemIds)', {
-            itemIds: createListingDto.itemIds,
-          })
-          .getMany();
+      const inventoryItems = await tx.inventoryItem.findMany({
+        where: { itemId: { in: createListingDto.itemIds } },
+      });
 
-        this.validateRequestedItems(
-          inventoryItems,
-          createListingDto.itemIds,
-          sellerId,
-        );
+      this.validateRequestedItems(
+        inventoryItems,
+        createListingDto.itemIds,
+        sellerId,
+      );
 
-        const listing = listingRepository.create({
+      const listing = await tx.listing.create({
+        data: {
           sellerId,
           title: createListingDto.title,
           description: createListingDto.description ?? null,
           price: createListingDto.price.toFixed(2),
           status: ListingStatus.ACTIVE,
-        });
-
-        const savedListing = await listingRepository.save(listing);
-
-        const listingItems = inventoryItems.map((inventoryItem) =>
-          listingItemRepository.create({
-            listing: savedListing,
-            inventoryItem,
-          }),
-        );
-
-        await listingItemRepository.save(listingItems);
-
-        for (const inventoryItem of inventoryItems) {
-          inventoryItem.availability =
-            InventoryAvailability.LISTED;
-        }
-
-        await inventoryRepository.save(inventoryItems);
-
-        return this.findOneWithRelations(
-          savedListing.listingId,
-          manager,
-        );
-      },
-    );
-  }
-
-  async findAll(): Promise<Listing[]> {
-    return this.dataSource.getRepository(Listing).find({
-      relations: {
-        listingItems: {
-          inventoryItem: true,
+          listingType:
+            inventoryItems.length > 1
+              ? ListingType.BUNDLE
+              : ListingType.SINGLE,
         },
-      },
-      order: {
-        createdAt: 'DESC',
-      },
+      });
+
+      await tx.listingItem.createMany({
+        data: inventoryItems.map((inventoryItem) => ({
+          listingId: listing.listingId,
+          itemId: inventoryItem.itemId,
+        })),
+      });
+
+      await tx.inventoryItem.updateMany({
+        where: { itemId: { in: inventoryItems.map((item) => item.itemId) } },
+        data: { availability: InventoryStatus.RESERVED },
+      });
+
+      return this.findOneWithRelations(listing.listingId, tx);
     });
   }
 
-  async findOne(listingId: string): Promise<Listing> {
+  async findAll(): Promise<ListingWithItems[]> {
+    return this.prisma.listing.findMany({
+      include: listingWithItemsInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findOne(listingId: string): Promise<ListingWithItems> {
     return this.findOneWithRelations(listingId);
   }
 
@@ -105,77 +93,54 @@ export class ListingsService {
     listingId: string,
     itemId: string,
     sellerId: string,
-  ): Promise<Listing> {
-    return this.dataSource.transaction(
-      async (manager: EntityManager): Promise<Listing> => {
-        const listingRepository = manager.getRepository(Listing);
-        const listingItemRepository = manager.getRepository(ListingItem);
-        const inventoryRepository = manager.getRepository(InventoryItem);
+  ): Promise<ListingWithItems> {
+    return this.prisma.$transaction(async (tx) => {
+      const listing = await tx.listing.findFirst({
+        where: { listingId, sellerId },
+        include: listingWithItemsInclude,
+      });
 
-        const listing = await listingRepository.findOne({
-          where: {
-            listingId,
-            sellerId,
-          },
-          relations: {
-            listingItems: {
-              inventoryItem: true,
-            },
-          },
-        });
+      if (!listing) {
+        throw new NotFoundException('Listing not found.');
+      }
 
-        if (!listing) {
-          throw new NotFoundException('Listing not found.');
-        }
-
-        if (listing.listingItems.length <= 1) {
-          throw new BadRequestException(
-            'A listing must contain at least one inventory item.',
-          );
-        }
-
-        const listingItem = listing.listingItems.find(
-          (currentListingItem) =>
-            currentListingItem.inventoryItem.itemId === itemId,
+      if (listing.listingItems.length <= 1) {
+        throw new BadRequestException(
+          'A listing must contain at least one inventory item.',
         );
+      }
 
-        if (!listingItem) {
-          throw new NotFoundException(
-            'The inventory item is not part of this listing.',
-          );
-        }
+      const listingItem = listing.listingItems.find(
+        (currentListingItem) =>
+          currentListingItem.inventoryItem.itemId === itemId,
+      );
 
-        await listingItemRepository.remove(listingItem);
-
-        listingItem.inventoryItem.availability =
-          InventoryAvailability.AVAILABLE;
-
-        await inventoryRepository.save(
-          listingItem.inventoryItem,
+      if (!listingItem) {
+        throw new NotFoundException(
+          'The inventory item is not part of this listing.',
         );
+      }
 
-        return this.findOneWithRelations(listingId, manager);
-      },
-    );
+      await tx.listingItem.delete({
+        where: { listingItemId: listingItem.listingItemId },
+      });
+
+      await tx.inventoryItem.update({
+        where: { itemId: listingItem.inventoryItem.itemId },
+        data: { availability: InventoryStatus.AVAILABLE },
+      });
+
+      return this.findOneWithRelations(listingId, tx);
+    });
   }
 
   private async findOneWithRelations(
     listingId: string,
-    manager?: EntityManager,
-  ): Promise<Listing> {
-    const repository: Repository<Listing> = manager
-      ? manager.getRepository(Listing)
-      : this.dataSource.getRepository(Listing);
-
-    const listing = await repository.findOne({
-      where: {
-        listingId,
-      },
-      relations: {
-        listingItems: {
-          inventoryItem: true,
-        },
-      },
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<ListingWithItems> {
+    const listing = await client.listing.findUnique({
+      where: { listingId },
+      include: listingWithItemsInclude,
     });
 
     if (!listing) {
@@ -186,7 +151,11 @@ export class ListingsService {
   }
 
   private validateRequestedItems(
-    inventoryItems: InventoryItem[],
+    inventoryItems: Array<{
+      itemId: string;
+      ownerId: string;
+      availability: InventoryStatus;
+    }>,
     requestedItemIds: string[],
     sellerId: string,
   ): void {
@@ -207,9 +176,7 @@ export class ListingsService {
     }
 
     const unavailableItem = inventoryItems.find(
-      (inventoryItem) =>
-        inventoryItem.availability !==
-        InventoryAvailability.AVAILABLE,
+      (inventoryItem) => inventoryItem.availability !== InventoryStatus.AVAILABLE,
     );
 
     if (unavailableItem) {
