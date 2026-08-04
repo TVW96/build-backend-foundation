@@ -5,9 +5,10 @@ Project has three phases:
 3) Build the Supabase backend deployment
 
 ## Phase 1
-### Manga Marketplace Core Domain ERD
-The Manga Marketplace database separates catalog products, seller-owned inventory items, and marketplace listings into distinct tables. This structure ensures that general manga information, individual physical copies, and sales offers can each be managed independently while remaining connected through defined relationships. This is how the marketplace’s core domain is defined.
 
+### Step 1 - Core Database Domain Model / Business Logic
+The Manga Marketplace database separates catalog products, seller-owned inventory items, and marketplace listings into distinct tables. This structure ensures that general manga information, individual physical copies, and sales offers can each be managed independently while remaining connected through defined relationships. This is how the marketplace’s core domain is defined.
+#### ERD
 ` Catalog Product --> Inventory Item --> Listing Item --> Listing(s) `
 ```mermaid
 ---
@@ -67,3 +68,4 @@ erDiagram
         uuid itemId FK
     }
 ```
+### Step 2 - Define Database Entities
