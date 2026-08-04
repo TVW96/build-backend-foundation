@@ -16,15 +16,12 @@ export class ListingsController {
     private readonly listingsService: ListingsService,
   ) {}
 
-  @Post()
-  create(@Body() createListingDto: CreateListingDto) {
-    // Temporary value until authentication is implemented.
-    const sellerId = '00000000-0000-4000-8000-000000000001';
-
-    return this.listingsService.create(
-      sellerId,
-      createListingDto,
-    );
+  @Post('seller/:sellerId')
+  create(
+    @Param('sellerId') sellerId: string,
+    @Body() createListingDto: CreateListingDto,
+  ) {
+    return this.listingsService.create(sellerId, createListingDto);
   }
 
   @Get()
