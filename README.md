@@ -69,3 +69,18 @@ erDiagram
     }
 ```
 ### Step 2 - Define Database Entities
+
+## Seed data
+
+With the database environment variables configured, populate the local
+database with deterministic development records:
+
+```bash
+npm run seed
+```
+
+The seed is safe to rerun: it updates the records associated with its stable
+UUIDs and does not delete unrelated data. It creates catalog products,
+seller-owned inventory in several availability states, active listings, a sold
+listing, and their listing-item relationships. The seller UUIDs are development
+placeholders until a users table is added.
