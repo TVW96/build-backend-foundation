@@ -6,6 +6,8 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "docker:reset": "docker rm -f $(docker ps -aq) 2>/dev/null || true && docker rmi -f $(docker images -q) 2>/dev/null || true && docker compose up --build -d",
+    "docker:cleanup": "if [ -n \"$(docker ps -aq)\" ]; then docker rm -f $(docker ps -aq); fi && if [ -n \"$(docker images -q)\" ]; then docker rmi -f $(docker images -q); fi",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts",
