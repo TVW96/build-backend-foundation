@@ -1,3 +1,4 @@
+# Set node version to use for the build. This can be overridden at build time with the --build-arg flag.
 ARG NODE_VERSION=26.5.1
 
 ################################################################################
