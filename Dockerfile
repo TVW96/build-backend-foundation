@@ -1,17 +1,30 @@
 # Set node version to use for the build. This can be overridden at build time with the --build-arg flag.
 ARG NODE_VERSION=26.5.1
 
-################################################################################
+################################################
+# Stage: Development
+################################################
 # Use node image for base image for all stages.
-FROM node:${NODE_VERSION}-alpine as base
-
+FROM node:${NODE_VERSION}-alpine AS base
 # Set working directory for all build stages.
 WORKDIR /usr/src/app
+COPY package.json package-lock.json ./
+RUN npm install -g npm@latest
+COPY . .
+EXPOSE 3000
+# Run the application as a non-root user.
+CMD ["npm", "run", "start:dev"]
+# Health check to ensure the application is running.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s \
+  CMD wget --quiet --tries=1 --spider http://localhost:3000/
 
 
-################################################################################
-# Create a stage for installing production dependecies.
-FROM base as deps
+################################################
+# Stage: Production
+################################################
+
+# Create a stage from development for installing production dependencies.
+FROM base AS deps
 
 # Download dependencies as a separate step to take advantage of Docker's caching.
 # Leverage a cache mount to /root/.npm to speed up subsequent builds.
@@ -22,9 +35,10 @@ RUN --mount=type=bind,source=package.json,target=package.json \
     --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev
 
-################################################################################
-# Create a stage for building the application.
-FROM deps as build
+################################################
+# Stage: Build
+################################################
+FROM deps AS build
 
 # Download additional development dependencies before building, as some projects require
 # "devDependencies" to be installed to build. If you don't need this, remove this step.
@@ -38,13 +52,13 @@ COPY . .
 # Run the build script.
 RUN npm run build
 
-################################################################################
-# Create a new stage to run the application with minimal runtime dependencies
-# where the necessary files are copied from the build stage.
-FROM base as final
+################################################
+# Stage: Final
+################################################
+FROM base AS final
 
 # Use production node environment by default.
-ENV NODE_ENV production
+ENV NODE_ENV=production
 
 # Run the application as a non-root user.
 USER node
@@ -62,4 +76,4 @@ COPY --from=build /usr/src/app/./ ././
 EXPOSE 3000
 
 # Run the application.
-CMD npm run start:dev
+CMD ["npm", "run", "start:dev"]
