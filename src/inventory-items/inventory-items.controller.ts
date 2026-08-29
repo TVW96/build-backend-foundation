@@ -19,7 +19,7 @@ export class InventoryItemsController {
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.inventoryItemsService.findOne(+id);
+    return this.inventoryItemsService.findOne(id);
   }
 
   @Patch(':id')
