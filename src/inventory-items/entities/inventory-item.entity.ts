@@ -1,11 +1,14 @@
 import {
   Column,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
 import { ListingItem } from '../../listings/entities/listing-item.entity';
+import { User } from '../../users/entities/user.entity';
 
 export enum InventoryAvailability {
   AVAILABLE = 'available',
@@ -32,6 +35,13 @@ export class InventoryItem {
     type: 'uuid',
   })
   ownerId: string;
+
+  @ManyToOne(() => User, (user) => user.inventoryItems, {
+    nullable: false,
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({ name: 'owner_id' })
+  owner: User;
 
   @Column({
     type: 'varchar',
@@ -69,9 +79,6 @@ export class InventoryItem {
   })
   sellerPhotoPath: string | null;
 
-  @OneToMany(
-    () => ListingItem,
-    (listingItem) => listingItem.inventoryItem,
-  )
+  @OneToMany(() => ListingItem, (listingItem) => listingItem.inventoryItem)
   listingItems: ListingItem[];
 }

@@ -9,7 +9,7 @@ async function bootstrap(): Promise<void> {
 
   const corsOrigins = (
     process.env.CORS_ORIGINS ??
-    'http://localhost:3001,http://127.0.0.1:3001'
+    'http://localhost:3000,http://127.0.0.1:3000'
   )
     .split(',')
     .map((origin) => origin.trim())
@@ -29,7 +29,7 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3001);
 }
 
 void bootstrap();

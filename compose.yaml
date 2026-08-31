@@ -32,13 +32,15 @@ services:
     container_name: nestjs-api
     environment:
       NODE_ENV: production
+      PORT: 3001
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       DB_NAME: manga_marketplace
     ports:
-      - 3000:3000
+      - 3001:3001
     volumes:
       - .:/usr/src/app
       - /usr/src/app/node_modules
@@ -50,7 +52,7 @@ services:
         "CMD",
         "node",
         "-e",
-        "require('node:http').get('http://127.0.0.1:3000', (res) => process.exit(res.statusCode >= 200 && res.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1));"
+        "require('node:http').get('http://127.0.0.1:3001', (res) => process.exit(res.statusCode >= 200 && res.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1));"
       ]
       interval: 10s
       timeout: 5s
@@ -60,4 +62,3 @@ services:
 
 volumes:
   manga-marketplace-data:
-

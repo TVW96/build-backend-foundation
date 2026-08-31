@@ -3,7 +3,8 @@
 When you're ready, start your application by running:
 `docker compose up --build`.
 
-Your application will be available at http://localhost:3000.
+The NestJS API will be available at http://localhost:3001. The Next.js
+frontend runs separately at http://localhost:3000.
 
 ### Deploying your application to the cloud
 

@@ -2,12 +2,15 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
 import { ListingItem } from './listing-item.entity';
+import { User } from '../../users/entities/user.entity';
 
 export enum ListingStatus {
   DRAFT = 'draft',
@@ -28,6 +31,13 @@ export class Listing {
     type: 'uuid',
   })
   sellerId: string;
+
+  @ManyToOne(() => User, (user) => user.listings, {
+    nullable: false,
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({ name: 'seller_id' })
+  seller: User;
 
   @Column({
     type: 'varchar',

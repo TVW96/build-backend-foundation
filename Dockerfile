@@ -11,12 +11,12 @@ WORKDIR /usr/src/app
 COPY package.json package-lock.json ./
 RUN npm install -g npm@latest
 COPY . .
-EXPOSE 3000
+EXPOSE 3001
 # Run the application as a non-root user.
 CMD ["npm", "run", "start:dev"]
 # Health check to ensure the application is running.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s \
-  CMD wget --quiet --tries=1 --spider http://localhost:3000/
+  CMD wget --quiet --tries=1 --spider http://localhost:3001/
 
 
 ################################################
@@ -73,7 +73,7 @@ COPY --from=build /usr/src/app/./ ././
 
 
 # Expose the port that the application listens on.
-EXPOSE 3000
+EXPOSE 3001
 
 # Run the application.
 CMD ["npm", "run", "start:dev"]
