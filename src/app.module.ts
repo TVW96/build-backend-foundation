@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CatalogProductsModule } from './catalog-products/catalog-products.module';
 import { InventoryItemsModule } from './inventory-items/inventory-items.module';
 import { ListingsModule } from './listings/listings.module';
+import { MediaModule } from './media/media.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -25,9 +26,9 @@ import { UsersModule } from './users/users.module';
 
         autoLoadEntities: true,
 
-        // Acceptable temporarily during early local development.
-        // Replace with migrations before production.
-        synchronize: configService.get('NODE_ENV') !== 'production',
+        // Migrations preserve data backfills, partial indexes, and composite
+        // integrity constraints that TypeORM's schema synchronizer cannot model.
+        synchronize: false,
       }),
     }),
 
@@ -35,6 +36,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     InventoryItemsModule,
     ListingsModule,
+    MediaModule,
   ],
 })
 export class AppModule {}

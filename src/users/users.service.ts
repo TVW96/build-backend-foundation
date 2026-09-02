@@ -218,10 +218,6 @@ export class UsersService {
     if (updateUserDto.region !== undefined) {
       user.region = updateUserDto.region.trim().toUpperCase();
     }
-    if (updateUserDto.avatarUrl !== undefined) {
-      user.avatarUrl = updateUserDto.avatarUrl?.trim() || null;
-    }
-
     try {
       await this.usersRepository.save(user);
     } catch (error: unknown) {
@@ -354,7 +350,7 @@ export class UsersService {
       .delete({ tokenHash });
   }
 
-  private async requireAuthenticatedUser(token: string): Promise<User> {
+  async requireAuthenticatedUser(token: string): Promise<User> {
     if (!token) {
       throw new UnauthorizedException("Sign in to continue.");
     }

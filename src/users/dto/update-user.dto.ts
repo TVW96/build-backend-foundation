@@ -3,7 +3,6 @@ import {
   IsISO31661Alpha2,
   IsOptional,
   IsString,
-  IsUrl,
   Matches,
   MaxLength,
   MinLength,
@@ -35,8 +34,4 @@ export class UpdateUserDto {
   })
   region?: string;
 
-  @IsOptional()
-  @IsUrl({ protocols: ["http", "https"], require_protocol: true })
-  @MaxLength(2048)
-  avatarUrl?: string | null;
 }

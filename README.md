@@ -6,6 +6,11 @@ Project has three phases:
 2. Implement the local REST API
 3. Build the Supabase backend deployment
 
+The image-storage schema and Supabase deployment design are documented in
+[`docs/media-storage-design.md`](docs/media-storage-design.md). The design
+covers catalog product images, inventory item images, listing item images, and
+user avatars without storing duplicate image bytes in PostgreSQL.
+
 ## Phase 1
 
 ### Step 1 - Core Database Domain Model / Business Logic
