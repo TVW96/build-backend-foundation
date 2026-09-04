@@ -76,6 +76,11 @@ make rollback straightforward.
 
 ## Upload flow
 
+The current Start selling implementation uses authenticated, bounded multipart
+uploads, image decoding, and transactional publication. See
+[`selling-publish.md`](selling-publish.md) for its endpoint and retry contract.
+The direct-upload flow below remains the proposed scaling design.
+
 1. The browser requests an upload from the Nest API with the target, MIME type,
    filename, and byte size.
 2. The API authenticates the custom MangaMarketplace session. It also verifies

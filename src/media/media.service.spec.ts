@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { createClient } from "@supabase/supabase-js";
+import sharp from "sharp";
 
 import { User } from "../users/entities/user.entity";
 import {
@@ -218,6 +219,46 @@ describe("MediaService", () => {
 
     expect(storage.remove).not.toHaveBeenCalled();
     expect(mediaAssets.delete).not.toHaveBeenCalled();
+  });
+
+  it("decodes seller photos and stores a WebP with dimensions and no private metadata", async () => {
+    const buffer = await sharp({
+      create: { width: 32, height: 48, channels: 3, background: "#236343" },
+    })
+      .jpeg()
+      .toBuffer();
+    const result = await service.uploadMarketplacePhoto(userId, "copy-id", {
+      buffer,
+      mimetype: "image/jpeg",
+      originalname: "my book.jpg",
+      size: buffer.length,
+    });
+    expect(result.asset).toMatchObject({
+      bucket: "marketplace-images",
+      width: 32,
+      height: 48,
+      mimeType: "image/webp",
+      uploadedByUserId: userId,
+    });
+    expect(result.objectKey).toMatch(
+      new RegExp(`^users/${userId}/inventory/copy-id/.+\\.webp$`),
+    );
+    const storedBytes = storage.upload.mock.calls[0][1] as Buffer;
+    const metadata = await sharp(storedBytes).metadata();
+    expect(metadata.format).toBe("webp");
+    expect(metadata.exif).toBeUndefined();
+  });
+
+  it("rejects truncated seller images even when their MIME signature matches", async () => {
+    await expect(
+      service.uploadMarketplacePhoto(userId, "copy-id", {
+        buffer: jpeg,
+        mimetype: "image/jpeg",
+        originalname: "broken.jpg",
+        size: jpeg.length,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storage.upload).not.toHaveBeenCalled();
   });
 
   it("rejects a file whose declared image type does not match its signature", async () => {

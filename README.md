@@ -11,6 +11,9 @@ The image-storage schema and Supabase deployment design are documented in
 covers catalog product images, inventory item images, listing item images, and
 user avatars without storing duplicate image bytes in PostgreSQL.
 
+The Start selling publication endpoint, image processing, and retry behavior
+are documented in [`docs/selling-publish.md`](docs/selling-publish.md).
+
 ## Phase 1
 
 ### Step 1 - Core Database Domain Model / Business Logic

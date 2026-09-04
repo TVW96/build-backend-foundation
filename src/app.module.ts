@@ -8,6 +8,7 @@ import { ListingsModule } from "./listings/listings.module";
 import { MediaModule } from "./media/media.module";
 import { UsersModule } from "./users/users.module";
 import { createDatabaseOptions } from "./database/database-options";
+import { SellingModule } from "./selling/selling.module";
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { createDatabaseOptions } from "./database/database-options";
     InventoryItemsModule,
     ListingsModule,
     MediaModule,
+    SellingModule,
   ],
 })
 export class AppModule {}
