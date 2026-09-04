@@ -23,8 +23,14 @@ end $$;
 alter table public.users add column if not exists avatar_asset_id uuid;
 alter table public.users add column if not exists avatar_image_id uuid;
 
-create type public.media_assets_origin_type_enum as enum
-  ('user_upload', 'external_import', 'derived', 'system', 'migration');
+do $type$
+begin
+  if to_regtype('public.media_assets_origin_type_enum') is null then
+    create type public.media_assets_origin_type_enum as enum
+      ('user_upload', 'external_import', 'derived', 'system', 'migration');
+  end if;
+end
+$type$;
 
 alter table public.media_assets
   add column if not exists origin_type public.media_assets_origin_type_enum,
@@ -50,21 +56,57 @@ alter table public.media_assets
   alter column origin_type set not null,
   alter column origin_reference set not null,
   alter column storage_provider set not null;
-alter table public.media_assets
-  add constraint fk_media_assets_derived_from foreign key (derived_from_asset_id)
-    references public.media_assets(asset_id) on delete set null,
-  add constraint chk_media_assets_origin_reference
-    check (length(trim(origin_reference)) > 0),
-  add constraint chk_media_assets_current_location
-    check (length(trim(storage_provider)) > 0 and length(trim(bucket)) > 0
-      and length(trim(object_key)) > 0);
+do $constraints$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.media_assets'::regclass
+      and conname = 'fk_media_assets_derived_from'
+  ) then
+    alter table public.media_assets add constraint fk_media_assets_derived_from
+      foreign key (derived_from_asset_id)
+      references public.media_assets(asset_id) on delete set null;
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.media_assets'::regclass
+      and conname = 'chk_media_assets_origin_reference'
+  ) then
+    alter table public.media_assets add constraint chk_media_assets_origin_reference
+      check (length(trim(origin_reference)) > 0);
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.media_assets'::regclass
+      and conname = 'chk_media_assets_current_location'
+  ) then
+    alter table public.media_assets add constraint chk_media_assets_current_location
+      check (length(trim(storage_provider)) > 0 and length(trim(bucket)) > 0
+        and length(trim(object_key)) > 0);
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.media_assets'::regclass
+      and conname = 'chk_media_assets_derived_origin'
+  ) then
+    alter table public.media_assets add constraint chk_media_assets_derived_origin
+      check (origin_type <> 'derived' or derived_from_asset_id is not null);
+  end if;
+end
+$constraints$;
 create index if not exists idx_media_assets_derived_from_asset_id
   on public.media_assets(derived_from_asset_id);
 
-create type public.entity_images_publication_source_enum as enum
-  ('user_upload', 'reuse', 'system', 'migration');
+do $type$
+begin
+  if to_regtype('public.entity_images_publication_source_enum') is null then
+    create type public.entity_images_publication_source_enum as enum
+      ('user_upload', 'reuse', 'system', 'migration');
+  end if;
+end
+$type$;
 
-create table public.entity_images (
+create table if not exists public.entity_images (
   image_id uuid primary key default gen_random_uuid(),
   asset_id uuid not null references public.media_assets(asset_id) on delete restrict,
   published_by_user_id uuid references public.users(user_id) on delete set null,
@@ -84,9 +126,57 @@ create table public.entity_images (
   constraint chk_entity_images_exactly_one_target check
     (num_nonnulls(user_id, catalog_product_id, inventory_item_id, listing_id, listing_item_id) = 1),
   constraint chk_entity_images_position check (position between 0 and 31),
+  constraint chk_entity_images_reuse_origin check
+    (publication_source <> 'reuse' or origin_image_id is not null
+      or publication_origin like 'entity-image:%'),
   constraint chk_entity_images_publication_origin check (length(trim(publication_origin)) > 0),
   constraint chk_entity_images_avatar_position check (user_id is null or position = 0)
 );
+
+do $constraints$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.entity_images'::regclass
+      and conname = 'chk_entity_images_reuse_origin'
+  ) then
+    alter table public.entity_images add constraint chk_entity_images_reuse_origin
+      check (publication_source <> 'reuse' or origin_image_id is not null
+        or publication_origin like 'entity-image:%');
+  end if;
+end
+$constraints$;
+
+create index if not exists idx_entity_images_asset_id
+  on public.entity_images(asset_id);
+create index if not exists idx_entity_images_published_by
+  on public.entity_images(published_by_user_id, created_at);
+create unique index if not exists idx_entity_images_user
+  on public.entity_images(user_id) where user_id is not null;
+create unique index if not exists idx_entity_images_catalog_asset
+  on public.entity_images(catalog_product_id, asset_id)
+  where catalog_product_id is not null;
+create unique index if not exists idx_entity_images_catalog_position
+  on public.entity_images(catalog_product_id, position)
+  where catalog_product_id is not null;
+create unique index if not exists idx_entity_images_inventory_asset
+  on public.entity_images(inventory_item_id, asset_id)
+  where inventory_item_id is not null;
+create unique index if not exists idx_entity_images_inventory_position
+  on public.entity_images(inventory_item_id, position)
+  where inventory_item_id is not null;
+create unique index if not exists idx_entity_images_listing_asset
+  on public.entity_images(listing_id, asset_id)
+  where listing_id is not null;
+create unique index if not exists idx_entity_images_listing_position
+  on public.entity_images(listing_id, position)
+  where listing_id is not null;
+create unique index if not exists idx_entity_images_listing_item_asset
+  on public.entity_images(listing_item_id, asset_id)
+  where listing_item_id is not null;
+create unique index if not exists idx_entity_images_listing_item_position
+  on public.entity_images(listing_item_id, position)
+  where listing_item_id is not null;
 
 do $$
 begin
@@ -175,6 +265,58 @@ end $$;
 
 create index if not exists idx_users_avatar_asset_id on public.users(avatar_asset_id);
 create index if not exists idx_users_avatar_image_id on public.users(avatar_image_id);
+
+do $validate$
+begin
+  if to_regclass('public.catalog_product_images') is not null and exists (
+    select 1
+    from public.catalog_product_images legacy
+    left join public.entity_images image
+      on image.image_id = legacy.image_id
+      and image.asset_id = legacy.asset_id
+      and image.catalog_product_id = legacy.product_id
+    where image.image_id is null
+  ) then
+    raise exception 'Refusing to drop catalog_product_images: not every row was copied';
+  end if;
+  if to_regclass('public.inventory_item_images') is not null and exists (
+    select 1
+    from public.inventory_item_images legacy
+    left join public.entity_images image
+      on image.image_id = legacy.image_id
+      and image.asset_id = legacy.asset_id
+      and image.inventory_item_id = legacy.item_id
+    where image.image_id is null
+  ) then
+    raise exception 'Refusing to drop inventory_item_images: not every row was copied';
+  end if;
+  if to_regclass('public.listing_item_images') is not null and exists (
+    select 1
+    from public.listing_item_images legacy
+    left join public.entity_images image
+      on image.image_id = legacy.image_id
+      and image.asset_id = legacy.asset_id
+      and image.listing_item_id = legacy.listing_item_id
+    where image.image_id is null
+  ) then
+    raise exception 'Refusing to drop listing_item_images: not every row was copied';
+  end if;
+  if exists (
+    select 1
+    from public.users user_row
+    where user_row.avatar_asset_id is not null
+      and not exists (
+        select 1
+        from public.entity_images image
+        where image.image_id = user_row.avatar_image_id
+          and image.asset_id = user_row.avatar_asset_id
+          and image.user_id = user_row.user_id
+      )
+  ) then
+    raise exception 'Refusing to finish migration: an avatar publication is missing or mismatched';
+  end if;
+end
+$validate$;
 
 drop table if exists public.catalog_product_images;
 drop table if exists public.inventory_item_images;
