@@ -8,9 +8,9 @@ blobs or base64 strings in an application table.
 
 Use two public-read buckets:
 
-| Bucket | Contents | Limit |
-| --- | --- | --- |
-| `avatars` | Current and historical user avatars | 2 MiB |
+| Bucket               | Contents                                    | Limit |
+| -------------------- | ------------------------------------------- | ----- |
+| `avatars`            | Current and historical user avatars         | 2 MiB |
 | `marketplace-images` | Catalog, inventory, and listing-item images | 8 MiB |
 
 Both buckets accept only JPEG, PNG, WebP, and AVIF. SVG is intentionally
@@ -118,7 +118,8 @@ policies so the Supabase Data API cannot bypass Nest authorization. Public
 buckets allow CDN reads, but public status does not grant write or delete
 access.
 
-The canonical destructive setup script is
-[`sql/reset-production-schema.sql`](../sql/reset-production-schema.sql). It
-drops only MangaMarketplace tables in the `public` schema. It does not drop or
-recreate Supabase-managed `auth`, `storage`, or system schemas.
+Database setup is migration-driven. The portable application-schema baseline
+creates only MangaMarketplace tables in `public`; the following security
+migration enables RLS, revokes Data API roles, and provisions buckets only when
+the Supabase-managed `storage.buckets` table exists. Neither migration drops or
+recreates Supabase-managed `auth`, `storage`, or system schemas during upgrade.

@@ -13,7 +13,7 @@ RUN npm install -g npm@latest
 COPY . .
 EXPOSE 3001
 # Run the application as a non-root user.
-CMD ["npm", "run", "start:dev"]
+CMD ["npm", "run", "start:prod"]
 # Health check to ensure the application is running.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s \
   CMD wget --quiet --tries=1 --spider http://localhost:3001/
@@ -76,4 +76,4 @@ COPY --from=build /usr/src/app/./ ././
 EXPOSE 3001
 
 # Run the application.
-CMD ["npm", "run", "start:dev"]
+CMD ["npm", "run", "start:prod"]

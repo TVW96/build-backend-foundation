@@ -1,12 +1,13 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { TypeOrmModule } from "@nestjs/typeorm";
 
-import { CatalogProductsModule } from './catalog-products/catalog-products.module';
-import { InventoryItemsModule } from './inventory-items/inventory-items.module';
-import { ListingsModule } from './listings/listings.module';
-import { MediaModule } from './media/media.module';
-import { UsersModule } from './users/users.module';
+import { CatalogProductsModule } from "./catalog-products/catalog-products.module";
+import { InventoryItemsModule } from "./inventory-items/inventory-items.module";
+import { ListingsModule } from "./listings/listings.module";
+import { MediaModule } from "./media/media.module";
+import { UsersModule } from "./users/users.module";
+import { createDatabaseOptions } from "./database/database-options";
 
 @Module({
   imports: [
@@ -15,20 +16,9 @@ import { UsersModule } from './users/users.module';
     }),
 
     TypeOrmModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.getOrThrow<string>('DB_HOST'),
-        port: Number(configService.getOrThrow<string>('DB_PORT')),
-        username: configService.getOrThrow<string>('DB_USERNAME'),
-        password: configService.getOrThrow<string>('DB_PASSWORD'),
-        database: configService.getOrThrow<string>('DB_NAME'),
-
+      useFactory: () => ({
+        ...createDatabaseOptions(process.env, "runtime"),
         autoLoadEntities: true,
-
-        // Migrations preserve data backfills, partial indexes, and composite
-        // integrity constraints that TypeORM's schema synchronizer cannot model.
-        synchronize: false,
       }),
     }),
 
