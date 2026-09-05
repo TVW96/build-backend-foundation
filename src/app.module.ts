@@ -9,6 +9,7 @@ import { MediaModule } from "./media/media.module";
 import { UsersModule } from "./users/users.module";
 import { createDatabaseOptions } from "./database/database-options";
 import { SellingModule } from "./selling/selling.module";
+import { PaymentsModule } from "./payments/payments.module";
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { SellingModule } from "./selling/selling.module";
     ListingsModule,
     MediaModule,
     SellingModule,
+    PaymentsModule,
   ],
 })
 export class AppModule {}

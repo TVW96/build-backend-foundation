@@ -2,22 +2,17 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import {
-  DataSource,
-  EntityManager,
-  In,
-  Repository,
-} from 'typeorm';
+} from "@nestjs/common";
+import { InjectDataSource } from "@nestjs/typeorm";
+import { DataSource, EntityManager, In, Repository } from "typeorm";
 
 import {
   InventoryAvailability,
   InventoryItem,
-} from '../inventory-items/entities/inventory-item.entity';
-import { CreateListingDto } from './dto/create-listing.dto';
-import { Listing, ListingStatus } from './entities/listing.entity';
-import { ListingItem } from './entities/listing-item.entity';
+} from "../inventory-items/entities/inventory-item.entity";
+import { CreateListingDto } from "./dto/create-listing.dto";
+import { Listing, ListingStatus } from "./entities/listing.entity";
+import { ListingItem } from "./entities/listing-item.entity";
 
 @Injectable()
 export class ListingsService {
@@ -37,9 +32,9 @@ export class ListingsService {
         const inventoryRepository = manager.getRepository(InventoryItem);
 
         const inventoryItems = await inventoryRepository
-          .createQueryBuilder('inventoryItem')
-          .setLock('pessimistic_write')
-          .where('inventoryItem.itemId IN (:...itemIds)', {
+          .createQueryBuilder("inventoryItem")
+          .setLock("pessimistic_write")
+          .where("inventoryItem.itemId IN (:...itemIds)", {
             itemIds: createListingDto.itemIds,
           })
           .getMany();
@@ -70,16 +65,12 @@ export class ListingsService {
         await listingItemRepository.save(listingItems);
 
         for (const inventoryItem of inventoryItems) {
-          inventoryItem.availability =
-            InventoryAvailability.LISTED;
+          inventoryItem.availability = InventoryAvailability.LISTED;
         }
 
         await inventoryRepository.save(inventoryItems);
 
-        return this.findOneWithRelations(
-          savedListing.listingId,
-          manager,
-        );
+        return this.findOneWithRelations(savedListing.listingId, manager);
       },
     );
   }
@@ -88,11 +79,19 @@ export class ListingsService {
     return this.dataSource.getRepository(Listing).find({
       relations: {
         listingItems: {
-          inventoryItem: true,
+          inventoryItem: {
+            product: true,
+            images: {
+              asset: true,
+            },
+          },
+        },
+        images: {
+          asset: true,
         },
       },
       order: {
-        createdAt: 'DESC',
+        createdAt: "DESC",
       },
     });
   }
@@ -125,12 +124,12 @@ export class ListingsService {
         });
 
         if (!listing) {
-          throw new NotFoundException('Listing not found.');
+          throw new NotFoundException("Listing not found.");
         }
 
         if (listing.listingItems.length <= 1) {
           throw new BadRequestException(
-            'A listing must contain at least one inventory item.',
+            "A listing must contain at least one inventory item.",
           );
         }
 
@@ -141,7 +140,7 @@ export class ListingsService {
 
         if (!listingItem) {
           throw new NotFoundException(
-            'The inventory item is not part of this listing.',
+            "The inventory item is not part of this listing.",
           );
         }
 
@@ -150,9 +149,7 @@ export class ListingsService {
         listingItem.inventoryItem.availability =
           InventoryAvailability.AVAILABLE;
 
-        await inventoryRepository.save(
-          listingItem.inventoryItem,
-        );
+        await inventoryRepository.save(listingItem.inventoryItem);
 
         return this.findOneWithRelations(listingId, manager);
       },
@@ -173,13 +170,21 @@ export class ListingsService {
       },
       relations: {
         listingItems: {
-          inventoryItem: true,
+          inventoryItem: {
+            product: true,
+            images: {
+              asset: true,
+            },
+          },
+        },
+        images: {
+          asset: true,
         },
       },
     });
 
     if (!listing) {
-      throw new NotFoundException('Listing not found.');
+      throw new NotFoundException("Listing not found.");
     }
 
     return listing;
@@ -192,7 +197,7 @@ export class ListingsService {
   ): void {
     if (inventoryItems.length !== requestedItemIds.length) {
       throw new BadRequestException(
-        'One or more inventory items do not exist.',
+        "One or more inventory items do not exist.",
       );
     }
 
@@ -202,14 +207,13 @@ export class ListingsService {
 
     if (itemNotOwnedBySeller) {
       throw new BadRequestException(
-        'You may only list inventory items that you own.',
+        "You may only list inventory items that you own.",
       );
     }
 
     const unavailableItem = inventoryItems.find(
       (inventoryItem) =>
-        inventoryItem.availability !==
-        InventoryAvailability.AVAILABLE,
+        inventoryItem.availability !== InventoryAvailability.AVAILABLE,
     );
 
     if (unavailableItem) {

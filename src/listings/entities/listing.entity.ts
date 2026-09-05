@@ -16,6 +16,7 @@ import { User } from "../../users/entities/user.entity";
 export enum ListingStatus {
   DRAFT = "draft",
   ACTIVE = "active",
+  RESERVED = "reserved",
   SOLD = "sold",
   CANCELLED = "cancelled",
 }
@@ -65,6 +66,21 @@ export class Listing {
     default: ListingStatus.DRAFT,
   })
   status: ListingStatus;
+
+  @Column({
+    name: "reserved_by_checkout_session",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
+  reservedByCheckoutSession: string | null;
+
+  @Column({
+    name: "reservation_expires_at",
+    type: "timestamptz",
+    nullable: true,
+  })
+  reservationExpiresAt: Date | null;
 
   @OneToMany(() => ListingItem, (listingItem) => listingItem.listing)
   listingItems: ListingItem[];
