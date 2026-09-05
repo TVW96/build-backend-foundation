@@ -11,6 +11,9 @@ The image-storage schema and Supabase deployment design are documented in
 covers catalog product images, inventory item images, listing item images, and
 user avatars without storing duplicate image bytes in PostgreSQL.
 
+The Start selling publication endpoint, image processing, and retry behavior
+are documented in [`docs/selling-publish.md`](docs/selling-publish.md).
+
 ## Phase 1
 
 ### Step 1 - Core Database Domain Model / Business Logic
@@ -122,6 +125,70 @@ erDiagram
 
 ### Step 2 - Define Database Entities
 
+## Database selection and migrations
+
+The same TypeORM entities and migrations support either local PostgreSQL or a
+Supabase-hosted PostgreSQL database. `DATABASE_TARGET` is an explicit safety
+switch; it defaults to `local` when omitted.
+
+Local development uses the component connection fields:
+
+```dotenv
+DATABASE_TARGET=local
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+DB_NAME=manga_marketplace
+```
+
+Supabase uses separate runtime and migration URLs plus verified TLS:
+
+```dotenv
+DATABASE_TARGET=supabase
+DATABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@REGION.pooler.supabase.com:5432/postgres
+MIGRATION_DATABASE_URL=postgresql://postgres:PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres
+DATABASE_SSL_CA_FILE=/absolute/path/to/prod-supabase.cer
+```
+
+Use the direct Supabase URL for both values when the deployment supports IPv6.
+On an IPv4-only host, use the Supavisor **session** pooler on port 5432 for the
+runtime URL. Prefer the direct URL for migrations. Do not use transaction mode
+on port 6543, and do not put `sslmode`, `sslcert`, `sslkey`, or `sslrootcert` in
+the URLs because the application supplies a verified CA configuration. Copy
+the connection strings from the dashboard's **Connect** panel and the CA from
+**Database Settings → SSL Configuration**; see the
+[Supabase connection guide](https://supabase.com/docs/guides/database/connecting-to-postgres)
+and [SSL guide](https://supabase.com/docs/guides/platform/ssl-enforcement).
+
+Apply the portable schema baseline and security migrations before starting the
+API:
+
+```bash
+npm run migration:run:local
+# or
+npm run migration:run:supabase
+```
+
+If the SQL editor is required instead of the TypeORM command, run
+[`sql/stage-consolidated-schema.sql`](/Users/tvw/Documents/VScode/Capstone/build-backend-foundation/sql/stage-consolidated-schema.sql)
+on a new project. For an existing legacy project, run
+[`sql/stage-data-preserving-supabase-migration.sql`](/Users/tvw/Documents/VScode/Capstone/build-backend-foundation/sql/stage-data-preserving-supabase-migration.sql)
+instead; it copies legacy image rows before removing the old image tables.
+
+The baseline creates the full schema on an empty database. If every application
+table already exists from the legacy migration chain, it records the baseline
+without changing data. It refuses partially initialized schemas. The security
+migration enables RLS and revokes direct Data API access from Supabase's `anon`
+and `authenticated` roles, including access to TypeORM's migration history.
+When Supabase Storage is present, it also creates or updates the `avatars` and
+`marketplace-images` buckets. On plain PostgreSQL, Storage provisioning is
+skipped.
+
+Schema synchronization and automatic migrations at API startup remain disabled.
+Run migrations as an explicit deployment step so a failed migration cannot be
+hidden inside an application restart loop.
+
 ## Seed data
 
 With the database environment variables configured, populate the local
@@ -137,15 +204,10 @@ seller-owned inventory in several availability states, active listings, a sold
 listing, and their listing-item relationships. The seeded users match the owner
 and seller UUIDs referenced by the inventory and listing records.
 
-To completely erase, recreate, and reseed the local development database:
-
-```bash
-npm run seed-reset
-```
-
-`seed-reset` is destructive. It refuses to run in production, against a remote
-database host, or against a database name other than `manga_marketplace` or a
-name ending in `_test`.
+There is intentionally no reset command. To initialize a database, run its
+migrations and then the non-destructive, idempotent seed. If a disposable local
+database must be recreated, remove its Docker volume explicitly and rerun the
+migrations; production and Supabase databases are never reset by an npm script.
 
 ## User signup
 

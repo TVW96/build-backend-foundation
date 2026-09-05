@@ -8,9 +8,9 @@ blobs or base64 strings in an application table.
 
 Use two public-read buckets:
 
-| Bucket | Contents | Limit |
-| --- | --- | --- |
-| `avatars` | Current and historical user avatars | 2 MiB |
+| Bucket               | Contents                                    | Limit |
+| -------------------- | ------------------------------------------- | ----- |
+| `avatars`            | Current and historical user avatars         | 2 MiB |
 | `marketplace-images` | Catalog, inventory, and listing-item images | 8 MiB |
 
 Both buckets accept only JPEG, PNG, WebP, and AVIF. SVG is intentionally
@@ -76,6 +76,11 @@ make rollback straightforward.
 
 ## Upload flow
 
+The current Start selling implementation uses authenticated, bounded multipart
+uploads, image decoding, and transactional publication. See
+[`selling-publish.md`](selling-publish.md) for its endpoint and retry contract.
+The direct-upload flow below remains the proposed scaling design.
+
 1. The browser requests an upload from the Nest API with the target, MIME type,
    filename, and byte size.
 2. The API authenticates the custom MangaMarketplace session. It also verifies
@@ -118,7 +123,8 @@ policies so the Supabase Data API cannot bypass Nest authorization. Public
 buckets allow CDN reads, but public status does not grant write or delete
 access.
 
-The canonical destructive setup script is
-[`sql/reset-production-schema.sql`](../sql/reset-production-schema.sql). It
-drops only MangaMarketplace tables in the `public` schema. It does not drop or
-recreate Supabase-managed `auth`, `storage`, or system schemas.
+Database setup is migration-driven. The portable application-schema baseline
+creates only MangaMarketplace tables in `public`; the following security
+migration enables RLS, revokes Data API roles, and provisions buckets only when
+the Supabase-managed `storage.buckets` table exists. Neither migration drops or
+recreates Supabase-managed `auth`, `storage`, or system schemas during upgrade.

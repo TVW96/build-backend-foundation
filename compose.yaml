@@ -1,30 +1,5 @@
 services:
-
-  ####################
-  # Service: DB
-  ####################
-  postgres:
-    image: postgres:15
-    container_name: manga-marketplace-db
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: manga_marketplace
-    ports:
-      - 5432:5432
-    volumes:
-      - manga-marketplace-data:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD", "pg_isready" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-  
-  ####################
-  # Service: API
-  ####################
-  nestjs: 
+  nestjs:
     build:
       context: .
       # Build the final image
@@ -34,31 +9,32 @@ services:
       NODE_ENV: production
       PORT: 3001
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: manga_marketplace
+      DATABASE_TARGET: ${DATABASE_TARGET:-local}
+      DB_HOST: ${DB_HOST:-localhost}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-manga_marketplace}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_CONNECT_TIMEOUT_MS: ${DB_CONNECT_TIMEOUT_MS:-10000}
+      DATABASE_URL: ${DATABASE_URL:-}
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      DATABASE_SSL_CA: ${DATABASE_SSL_CA:-}
+      DATABASE_SSL_CA_FILE: ${DATABASE_SSL_CA_FILE:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
     ports:
-      - 3001:3001
-    volumes:
-      - .:/usr/src/app
-      - /usr/src/app/node_modules
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - "${API_PORT:-3001}:3001"
     healthcheck:
-      test: [
-        "CMD",
-        "node",
-        "-e",
-        "require('node:http').get('http://127.0.0.1:3001', (res) => process.exit(res.statusCode >= 200 && res.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1));"
-      ]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('node:http').get('http://127.0.0.1:3001', (res) => process.exit(res.statusCode >= 200 && res.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1));",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
     restart: unless-stopped
-
-volumes:
-  manga-marketplace-data:

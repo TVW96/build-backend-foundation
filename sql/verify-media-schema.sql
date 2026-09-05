@@ -1,5 +1,5 @@
 -- Transactional integrity checks for the consolidated media schema.
--- Run after reset-production-schema.sql. No test rows are retained.
+-- Run after the application baseline and security migrations. No test rows are retained.
 
 begin;
 

@@ -5,23 +5,33 @@ import {
   Get,
   Param,
   Post,
-} from '@nestjs/common';
+  Headers,
+  ForbiddenException,
+} from "@nestjs/common";
 
-import { CreateListingDto } from './dto/create-listing.dto';
-import { ListingsService } from './listings.service';
+import { CreateListingDto } from "./dto/create-listing.dto";
+import { ListingsService } from "./listings.service";
+import { UsersService } from "../users/users.service";
 
-@Controller('listings')
+@Controller("listings")
 export class ListingsController {
   constructor(
     private readonly listingsService: ListingsService,
+    private readonly usersService: UsersService,
   ) {}
 
-  @Post('seller/:sellerId')
-  create(
-    @Param('sellerId') sellerId: string,
+  @Post("seller/:sellerId")
+  async create(
+    @Param("sellerId") sellerId: string,
     @Body() createListingDto: CreateListingDto,
+    @Headers("authorization") authorization?: string,
   ) {
-    return this.listingsService.create(sellerId, createListingDto);
+    const user = await this.usersService.requireAuthenticatedUser(
+      authorization?.replace(/^Bearer\s+/i, "").trim() ?? "",
+    );
+    if (sellerId !== user.userId)
+      throw new ForbiddenException("You may only create your own listings.");
+    return this.listingsService.create(user.userId, createListingDto);
   }
 
   @Get()
@@ -29,23 +39,21 @@ export class ListingsController {
     return this.listingsService.findAll();
   }
 
-  @Get(':listingId')
-  findOne(@Param('listingId') listingId: string) {
+  @Get(":listingId")
+  findOne(@Param("listingId") listingId: string) {
     return this.listingsService.findOne(listingId);
   }
 
-  @Delete(':listingId/items/:itemId')
-  removeItem(
-    @Param('listingId') listingId: string,
-    @Param('itemId') itemId: string,
+  @Delete(":listingId/items/:itemId")
+  async removeItem(
+    @Param("listingId") listingId: string,
+    @Param("itemId") itemId: string,
+    @Headers("authorization") authorization?: string,
   ) {
-    // Temporary value until authentication is implemented.
-    const sellerId = '00000000-0000-4000-8000-000000000001';
-
-    return this.listingsService.removeItem(
-      listingId,
-      itemId,
-      sellerId,
+    const user = await this.usersService.requireAuthenticatedUser(
+      authorization?.replace(/^Bearer\s+/i, "").trim() ?? "",
     );
+
+    return this.listingsService.removeItem(listingId, itemId, user.userId);
   }
 }

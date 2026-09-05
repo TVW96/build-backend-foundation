@@ -9,6 +9,7 @@ import { InjectDataSource, InjectRepository } from "@nestjs/typeorm";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import { DataSource, Repository } from "typeorm";
+import sharp from "sharp";
 
 import { User } from "../users/entities/user.entity";
 import { type PublicAccount, UsersService } from "../users/users.service";
@@ -39,6 +40,12 @@ export type AvatarUpload = {
   size: number;
 };
 
+export type MarketplaceUpload = {
+  asset: Partial<MediaAsset>;
+  publicUrl: string;
+  objectKey: string;
+};
+
 @Injectable()
 export class MediaService {
   private supabaseClient: SupabaseClient | null = null;
@@ -53,6 +60,98 @@ export class MediaService {
     private readonly configService: ConfigService,
     private readonly usersService: UsersService,
   ) {}
+
+  validateMarketplacePhoto(file: AvatarUpload): void {
+    if (
+      !file?.buffer?.length ||
+      file.size !== file.buffer.length ||
+      file.size > 8 * 1024 * 1024 ||
+      !MIME_EXTENSIONS[file.mimetype] ||
+      !this.matchesImageSignature(file.buffer, file.mimetype)
+    ) {
+      throw new BadRequestException(
+        "Use valid JPEG, PNG, WebP, or AVIF photos, up to 8 MB each.",
+      );
+    }
+  }
+
+  async uploadMarketplacePhoto(
+    userId: string,
+    itemId: string,
+    file: AvatarUpload,
+  ): Promise<MarketplaceUpload> {
+    this.validateMarketplacePhoto(file);
+    // Decode before storage, normalize orientation, and strip private EXIF/GPS metadata.
+    let decoded: Buffer;
+    let width: number;
+    let height: number;
+    try {
+      const image = await sharp(file.buffer, {
+        limitInputPixels: 25_000_000,
+        failOn: "warning",
+      })
+        .rotate()
+        .webp({ quality: 90 })
+        .toBuffer({ resolveWithObject: true });
+      decoded = image.data;
+      width = image.info.width;
+      height = image.info.height;
+    } catch {
+      throw new BadRequestException(
+        "A photo could not be decoded. Use a complete image under 25 megapixels.",
+      );
+    }
+    if (decoded.length > 8 * 1024 * 1024)
+      throw new BadRequestException(
+        "A processed photo exceeds 8 MB. Choose a smaller image.",
+      );
+    const client = this.getSupabaseClient();
+    const assetId = randomUUID();
+    const bucket = "marketplace-images";
+    const objectKey = `users/${userId}/inventory/${itemId}/${assetId}.webp`;
+    const { error } = await client.storage
+      .from(bucket)
+      .upload(objectKey, decoded, {
+        cacheControl: "31536000",
+        contentType: "image/webp",
+        upsert: false,
+      });
+    if (error)
+      throw new BadGatewayException(
+        "Photo storage is unavailable. Your listing was not published.",
+      );
+    return {
+      objectKey,
+      publicUrl: client.storage.from(bucket).getPublicUrl(objectKey).data
+        .publicUrl,
+      asset: {
+        assetId,
+        uploadedByUserId: userId,
+        originType: MediaAssetOriginType.USER_UPLOAD,
+        originReference: `inventory:${itemId}/seller-photo`,
+        derivedFromAssetId: null,
+        storageProvider: "supabase",
+        bucket,
+        objectKey,
+        mimeType: "image/webp",
+        byteSize: String(decoded.length),
+        width,
+        height,
+        originalFileName: this.normalizeFileName(file.originalname),
+        sourceUrl: null,
+        status: MediaAssetStatus.READY,
+      },
+    };
+  }
+
+  async removeMarketplaceUploads(objectKeys: string[]): Promise<void> {
+    if (!objectKeys.length) return;
+    const { error } = await this.getSupabaseClient()
+      .storage.from("marketplace-images")
+      .remove(objectKeys);
+    if (error)
+      throw new BadGatewayException("Could not clean up unpublished photos.");
+  }
 
   async uploadAvatar(
     token: string,
@@ -200,7 +299,7 @@ export class MediaService {
 
     if (!url || !key) {
       throw new ServiceUnavailableException(
-        "Avatar storage is not configured on the server.",
+        "Image storage is not configured on the server.",
       );
     }
 

@@ -11,6 +11,6 @@ import { MediaService } from "./media.service";
   imports: [TypeOrmModule.forFeature([MediaAsset, EntityImage]), UsersModule],
   controllers: [MediaController],
   providers: [MediaService],
-  exports: [TypeOrmModule],
+  exports: [TypeOrmModule, MediaService],
 })
 export class MediaModule {}
